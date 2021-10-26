@@ -14,7 +14,7 @@ fetchaddr(uint64 addr, uint64 *ip)
   struct proc *p = myproc();
   if(addr >= p->sz || addr+sizeof(uint64) > p->sz)
     return -1;
-  if(copyin(p->pagetable, (char *)ip, addr, sizeof(*ip)) != 0)
+  if(copyin(p->pagetable, (char *)ip, addr, sizeof(*ip)) != 0)//from page table into ip?
     return -1;
   return 0;
 }
@@ -25,7 +25,7 @@ int
 fetchstr(uint64 addr, char *buf, int max)
 {
   struct proc *p = myproc();
-  int err = copyinstr(p->pagetable, buf, addr, max);
+  int err = copyinstr(p->pagetable, buf, addr, max);//to buf
   if(err < 0)
     return err;
   return strlen(buf);
@@ -34,6 +34,7 @@ fetchstr(uint64 addr, char *buf, int max)
 static uint64
 argraw(int n)
 {
+  //retrieve nth system call argument
   struct proc *p = myproc();
   switch (n) {
   case 0:
@@ -137,7 +138,8 @@ syscall(void)
 
   num = p->trapframe->a7;
   if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
-    p->trapframe->a0 = syscalls[num]();
+    p->trapframe->a0 = syscalls[num]();//return value is in a0
+    printf("%d\n",p->pid);
   } else {
     printf("%d %s: unknown sys call %d\n",
             p->pid, p->name, num);
