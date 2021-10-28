@@ -104,8 +104,9 @@ sys_close(void)
   return 0;
 }
 
+
 uint64
-sys_fstat(void)
+sys_fstat(void)//int fstat(int fd, struct stat*);
 {
   struct file *f;
   uint64 st; // user pointer to struct stat

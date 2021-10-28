@@ -6,6 +6,50 @@
 #include "memlayout.h"
 #include "spinlock.h"
 #include "proc.h"
+#include "sysinfo.h"
+
+extern struct proc proc[NPROC];//proc.c
+
+uint64
+sys_info(void)
+{
+  uint64 addr;
+  struct sysinfo info;
+  struct proc *p = myproc();
+
+  struct proc *x;
+  
+  //printf("it is ok\n");
+
+  info.freemem = kcountfree();
+  info.nproc = 0;
+  
+  for(x = proc; x < &proc[NPROC]; x++) {
+    acquire(&x->lock);
+    if(x->state != UNUSED) {
+      info.nproc++;
+    }
+    release(&x->lock); 
+  }
+  
+  if(argaddr(0,&addr) < 0)
+    return -1;
+  if(copyout(p->pagetable, addr, (char *)&info, sizeof(info)) < 0) //copyout(p->pagetable, dst, src, len);
+    return -1;
+  //printf("it is ok2\n");
+  return 0;
+}
+
+//The functions to retrieve system call arguments from user space
+uint64
+sys_trace(void)
+{
+  int n;
+  if(argint(0, &n) < 0)
+    return -1;
+  myproc()->bitmask = n;
+  return 0;
+}
 
 uint64
 sys_exit(void)

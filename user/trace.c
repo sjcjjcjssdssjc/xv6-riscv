@@ -1,6 +1,7 @@
 #include "kernel/param.h"
 #include "kernel/types.h"
 #include "kernel/stat.h"
+#include "kernel/syscall.h"
 #include "user/user.h"
 
 int
@@ -9,7 +10,7 @@ main(int argc, char *argv[])
   int i;
   char *nargv[MAXARG];
 
-  if(argc < 3 || (argv[1][0] < '0' || argv[1][0] > '9')){
+  if(argc < 3 || (argv[1][0] < '0' || argv[1][0] > '9')){ //argv[1] is the bitmask
     fprintf(2, "Usage: %s mask command\n", argv[0]);
     exit(1);
   }
