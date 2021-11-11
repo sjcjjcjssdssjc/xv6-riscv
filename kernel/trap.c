@@ -8,6 +8,7 @@
 
 struct spinlock tickslock;
 uint ticks;
+uint64 func = 0;
 
 extern char trampoline[], uservec[], userret[];
 
@@ -49,7 +50,6 @@ usertrap(void)
   
   // save user program counter.
   p->trapframe->epc = r_sepc();
-  
   if(r_scause() == 8){
     // system call
 
@@ -66,7 +66,16 @@ usertrap(void)
 
     syscall();
   } else if((which_dev = devintr()) != 0){
-    // ok
+    if(p->interval != 0 && which_dev == 2){
+      p->howlong++;
+      if(p->howlong == p->interval){
+        printf("reached %d %d\n",p->howlong,p->interval);
+        //printf("%p\n",r_sepc());
+        p->howlong = 0;
+        p->trapframe->epc = func;
+        //((void (*)())func)();
+      }
+    }
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());
@@ -120,7 +129,6 @@ usertrapret(void)
 
   // tell trampoline.S the user page table to switch to.
   uint64 satp = MAKE_SATP(p->pagetable);
-
   // jump to trampoline.S at the top of memory, which 
   // switches to the user page table, restores user registers,
   // and switches to user mode with sret.
@@ -148,7 +156,7 @@ kerneltrap()
     printf("sepc=%p stval=%p\n", r_sepc(), r_stval());
     panic("kerneltrap");
   }
-
+  
   // give up the CPU if this is a timer interrupt.
   if(which_dev == 2 && myproc() != 0 && myproc()->state == RUNNING)
     yield();
