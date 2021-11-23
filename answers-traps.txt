@@ -1,0 +1,9 @@
+a0,a1,a2,a3,...  contain arguments to functions. 13 is stored in a1.
+li	a1,12 is the combination of calling f and g.
+printf is in 0x630 = 0x600+0x30
+0x30
+He110 World
+0x0072646c
+yes
+x=3 y=5221
+because a2 in trapframe is 5221
