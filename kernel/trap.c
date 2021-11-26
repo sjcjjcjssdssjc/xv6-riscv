@@ -74,8 +74,7 @@ usertrap(void)
     pte_t * pte = walk(p->pagetable,va,0);
     uint64 pa = PTE2PA(*pte); 
     uint flags = PTE_FLAGS(*pte);
-    if(va >= p->sz || !((*pte)&PTE_COW) ){
-      //printf("cow bit is %d\n",((*pte)&PTE_COW));
+    if(va >= p->sz || !((*pte)&PTE_COW)){
       p->killed = 1;
     }
     else{
@@ -83,21 +82,17 @@ usertrap(void)
       //printf("copying on write1 va:%p ka:%p ref count = %d\n",va,ka,refcount[PA2IND(ka)]);
       if(ka == 0){
         p->killed = 1;
-      } else {
+      }else {
         va = PGROUNDDOWN(va);
-        //printf("moving\n");
         //va is dst
         memmove((char *)ka, (char*)pa, PGSIZE);
-        //printf("moved.\n");
         uvmunmap(p->pagetable,va,1,1);
         //printf("%d\n",flags);
-        if(mappages(p->pagetable, va, PGSIZE, ka, PTE_W|flags) != 0){//unmap+ -1inref count?
+        if(mappages(p->pagetable, va, PGSIZE, ka, (PTE_W|flags)^PTE_COW) != 0){//unmask the cow
           kfree((void *)ka);
-          printf("freed\n");
+          //printf("freed\n");
           p->killed = 1;
         }
-        //printf("copying on write1 va:%p ka:%p ref count = %d\n",va,ka,refcount[PA2IND(ka)]);
-        //printf("mapped\n");
       }
     }
   } else {

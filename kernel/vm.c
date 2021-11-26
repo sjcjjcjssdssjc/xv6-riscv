@@ -5,6 +5,8 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "spinlock.h"
+#include "proc.h"
 
 /*
  * the kernel's page table.
@@ -64,7 +66,7 @@ kvminithart()
 // The risc-v Sv39 scheme has three levels of page-table
 // pages. A page-table page contains 512 64-bit PTEs.
 // A 64-bit virtual address is split into five fields:
-//   39..63 -- must be zero.
+//   39..63  must be zero.
 //   30..38 -- 9 bits of level-2 index.
 //   21..29 -- 9 bits of level-1 index.
 //   12..20 -- 9 bits of level-0 index.
@@ -185,11 +187,14 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
       panic("uvmunmap: walk");
     uint64 pa = PTE2PA(*pte);
     //printf("unmaping %p\n",pa);
-    refcount[PA2IND(pa)]--;
     if((*pte & PTE_V) == 0)
       panic("uvmunmap: not mapped");
     if(PTE_FLAGS(*pte) == PTE_V)
       panic("uvmunmap: not a leaf");
+    refcount[PA2IND(pa)]--;
+    //if(!refcount[PA2IND(pa)] && !do_free){
+    //  printf("?\n");
+    //}
     if(do_free){
       uint64 pa = PTE2PA(*pte);
       kfree((void*)pa);
@@ -372,20 +377,24 @@ uvmclear(pagetable_t pagetable, uint64 va)
 int
 copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 {
+  //b vm.c:376
   //printf("copyout %p\n",dstva);
   uint64 n, va0, pa0;
   int i=0;//5
   while(len > 0){//all ptes of cow page have cow bit set.
+    
     va0 = PGROUNDDOWN(dstva);
     pa0 = walkaddr(pagetable, va0);
-    pte_t * pte = walk(pagetable,va0,0); 
-    uint flags = PTE_FLAGS(*pte);
-
-    //printf("%p\n",pa0);
+    //printf("walked.\n");
+    //printf("pa0 is %p\n",pa0);
     if(pa0 == 0)
       return -1;
-    
+    pte_t * pte = walk(pagetable,va0,0); 
+    uint flags = PTE_FLAGS(*pte);
+   
     if(((*pte)&PTE_COW) && !((*pte)&PTE_W)){
+      
+      //printf("%p\n",flags);
       n = PGSIZE - (dstva - va0);
       if(n > len)
         n = len;
@@ -397,7 +406,7 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
         //va is dst
         memmove((char *)ka0, (char *)pa0, PGSIZE-n);//important
         memmove((char *)(ka0 + (dstva - va0)), src, n);
-        //printf("%p before:%d\n",pa0,refcount[PA2IND(pa0)]);
+        //printf("%p before:%d\n",pa0,refcount[PA2IND(pa0)]);//
         uvmunmap(pagetable,va0,1,1);
         if(mappages(pagetable, va0, PGSIZE, ka0, PTE_W|flags) != 0){//unmap+ -1inref count?
           kfree((void *)ka0);
@@ -411,9 +420,8 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
       len -= n;
       src += n;
       dstva = va0 + PGSIZE;
-    } else
-    
-    {
+    } else{
+      //printf("%d\n",((*pte)&PTE_COW));
       n = PGSIZE - (dstva - va0);
       if(n > len)
         n = len;
@@ -427,7 +435,8 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
   return 0;
 
   err:
-    uvmunmap(pagetable, dstva, i / PGSIZE, 1);
+    //printf("err\n");//to be changed
+    //uvmunmap(pagetable, dstva, i / PGSIZE, 1);
     return -1;
 }
 

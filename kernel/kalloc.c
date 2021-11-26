@@ -18,6 +18,7 @@ struct run {
   struct run *next;
 };
 
+//int cnt=0;
 struct {
   struct spinlock lock;
   struct run *freelist;
@@ -27,7 +28,7 @@ void
 kinit()
 {
   initlock(&kmem.lock, "kmem");
-  freerange(end, (void*)PHYSTOP);
+  freerange(end, (void*)PHYSTOP);//32698 pages
 }
 
 void
@@ -46,8 +47,7 @@ freerange(void *pa_start, void *pa_end)
 void
 kfree(void *pa)
 {
-  if(refcount[PA2IND(pa)] == 0){
-    //printf("kfreeing %p\n",pa);
+  if(refcount[PA2IND(pa)] == 0){// no <0
     struct run *r;
     if(((uint64)pa % PGSIZE) != 0 || (char*)pa < end || (uint64)pa >= PHYSTOP)
       panic("kfree");
@@ -58,6 +58,7 @@ kfree(void *pa)
     r->next = kmem.freelist;
     kmem.freelist = r;
     release(&kmem.lock);
+    //cnt--;
   }
 }
 
@@ -78,7 +79,9 @@ kalloc(void)
   if(r){
     memset((char*)r, 5, PGSIZE); // fill with junk
     refcount[PA2IND(r)]=1;
-
+    //cnt++;
+    //printf("%d ",cnt);
   }
+  //b kalloc.c:83
   return (void*)r;
 }
