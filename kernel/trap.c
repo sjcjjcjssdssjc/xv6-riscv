@@ -11,6 +11,7 @@ uint ticks;
 
 extern char trampoline[], uservec[], userret[];
 
+extern int refcount[];
 // in kernelvec.S, calls kerneltrap().
 void kernelvec();
 
@@ -67,6 +68,32 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
+  } else if((r_scause()==15)){ //page faults (13 is lod page fault)
+    uint64 va = r_stval();
+    pte_t * pte = walk(p->pagetable,va,0);
+    uint64 pa = PTE2PA(*pte); 
+    uint flags = PTE_FLAGS(*pte);
+    if(va >= p->sz || !((*pte)&PTE_COW) ){
+      p->killed = 1;
+    }
+    else{
+
+      uint64 ka = (uint64) kalloc();//pa for va
+      //printf("copying on write1 va:%p ka:%p ref count = %d\n",va,ka,refcount[PA2IND(ka)]);
+      if(ka == 0){
+        p->killed = 1;
+      } else {
+        va = PGROUNDDOWN(va);
+        //va is dst
+        memmove((char *)ka, (char*)pa, PGSIZE);
+        uvmunmap(p->pagetable,va,1,0);
+       
+        if(mappages(p->pagetable, va, PGSIZE, ka, PTE_W|flags) != 0){//unmap+ -1inref count?
+          kfree((void *)ka);
+          p->killed = 1;
+        }
+      }
+    }
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());

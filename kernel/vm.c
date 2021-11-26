@@ -15,6 +15,7 @@ extern char etext[];  // kernel.ld sets this to end of kernel code.
 
 extern char trampoline[]; // trampoline.S
 
+extern int refcount[];
 /*
  * create a direct-map page table for the kernel.
  */
@@ -75,7 +76,7 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
     panic("walk");
 
   for(int level = 2; level > 0; level--) {
-    pte_t *pte = &pagetable[PX(level, va)];
+    pte_t *pte = &pagetable[PX(level, va)];//30..38/21..29/12..20 to 0:8
     if(*pte & PTE_V) {
       pagetable = (pagetable_t)PTE2PA(*pte);
     } else {
@@ -157,7 +158,7 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
     if((pte = walk(pagetable, a, 1)) == 0)
       return -1;
     if(*pte & PTE_V)
-      panic("remap");
+      panic("remap"); 
     *pte = PA2PTE(pa) | perm | PTE_V;
     if(a == last)
       break;
@@ -182,6 +183,9 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
   for(a = va; a < va + npages*PGSIZE; a += PGSIZE){
     if((pte = walk(pagetable, a, 0)) == 0)
       panic("uvmunmap: walk");
+    uint64 pa = PTE2PA(*pte);
+    //printf("unmaping %p\n",pa);
+    refcount[PA2IND(pa)]--;
     if((*pte & PTE_V) == 0)
       panic("uvmunmap: not mapped");
     if(PTE_FLAGS(*pte) == PTE_V)
@@ -301,32 +305,40 @@ uvmfree(pagetable_t pagetable, uint64 sz)
 
 // Given a parent process's page table, copy
 // its memory into a child's page table.
-// Copies both the page table and the
+// Copies both the page table without the
 // physical memory.
 // returns 0 on success, -1 on failure.
 // frees any allocated pages on failure.
+// only used in fork? in which sz=parent->sz
 int
 uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 {
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
 
   for(i = 0; i < sz; i += PGSIZE){
-    if((pte = walk(old, i, 0)) == 0)
+    //walk(pagetable_t pagetable, uint64 va, int alloc)
+    if((pte = walk(old, i, 0)) == 0)//father's pte changed to not Wable
       panic("uvmcopy: pte should exist");
     if((*pte & PTE_V) == 0)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
-    flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
+    flags = PTE_FLAGS(*pte);//lower 10bits
+    flags &= 0x3FB;//unmask the w bit
+    flags |= PTE_COW;
+
+    //if((mem = kalloc()) == 0)
+    //  goto err;
+    //mem is dst
+    //memmove(mem, (char*)pa, PGSIZE);
+
+    if(mappages(new, i, PGSIZE, (uint64)pa, flags) != 0){
+      //kfree(mem);
       goto err;
     }
+    //printf("forking,pa is %p %p\n",pa,PA2IND(pa));
+    refcount[PA2IND(pa)]++;
   }
   return 0;
 
@@ -354,6 +366,7 @@ uvmclear(pagetable_t pagetable, uint64 va)
 int
 copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 {
+  //printf("copyout %p\n",dstva);
   uint64 n, va0, pa0;
 
   while(len > 0){
