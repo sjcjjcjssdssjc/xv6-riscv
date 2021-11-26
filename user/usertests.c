@@ -74,6 +74,7 @@ copyout(char *s)
   uint64 addrs[] = { 0x80000000LL, 0xffffffffffffffff };
 
   for(int ai = 0; ai < 2; ai++){
+    printf("%d\n",ai);
     uint64 addr = addrs[ai];
 
     int fd = open("README", 0);
@@ -81,6 +82,7 @@ copyout(char *s)
       printf("open(README) failed\n");
       exit(1);
     }
+    printf("open ok\n");
     int n = read(fd, (void*)addr, 8192);
     if(n > 0){
       printf("read(fd, %p, 8192) returned %d, not -1 or 0\n", addr, n);

@@ -70,28 +70,34 @@ usertrap(void)
     // ok
   } else if((r_scause()==15)){ //page faults (13 is lod page fault)
     uint64 va = r_stval();
+    //printf("page fault %p\n",va);
     pte_t * pte = walk(p->pagetable,va,0);
     uint64 pa = PTE2PA(*pte); 
     uint flags = PTE_FLAGS(*pte);
     if(va >= p->sz || !((*pte)&PTE_COW) ){
+      //printf("cow bit is %d\n",((*pte)&PTE_COW));
       p->killed = 1;
     }
     else{
-
       uint64 ka = (uint64) kalloc();//pa for va
       //printf("copying on write1 va:%p ka:%p ref count = %d\n",va,ka,refcount[PA2IND(ka)]);
       if(ka == 0){
         p->killed = 1;
       } else {
         va = PGROUNDDOWN(va);
+        //printf("moving\n");
         //va is dst
         memmove((char *)ka, (char*)pa, PGSIZE);
-        uvmunmap(p->pagetable,va,1,0);
-       
+        //printf("moved.\n");
+        uvmunmap(p->pagetable,va,1,1);
+        //printf("%d\n",flags);
         if(mappages(p->pagetable, va, PGSIZE, ka, PTE_W|flags) != 0){//unmap+ -1inref count?
           kfree((void *)ka);
+          printf("freed\n");
           p->killed = 1;
         }
+        //printf("copying on write1 va:%p ka:%p ref count = %d\n",va,ka,refcount[PA2IND(ka)]);
+        //printf("mapped\n");
       }
     }
   } else {
