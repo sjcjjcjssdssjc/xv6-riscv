@@ -20,7 +20,7 @@ static void wakeup1(struct proc *chan);
 static void freeproc(struct proc *p);
 
 extern char trampoline[]; // trampoline.S
-
+extern pagetable_t kernel_pagetable;
 // initialize the proc table at boot time.
 void
 procinit(void)
@@ -121,6 +121,7 @@ found:
     return 0;
   }
 
+  p->kpagetable = kvmcreate();
   // Set up new context to start executing at forkret,
   // which returns to user space.
   memset(&p->context, 0, sizeof(p->context));
@@ -141,6 +142,8 @@ freeproc(struct proc *p)
   p->trapframe = 0;
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
+  if(p->pagetable)
+    kvmfree(p->kpagetable);
   p->pagetable = 0;
   p->sz = 0;
   p->pid = 0;
@@ -230,6 +233,8 @@ userinit(void)
 
   p->state = RUNNABLE;
 
+  kvmmapuser(p->kpagetable, p->pagetable, PGSIZE, 0);
+
   release(&p->lock);
 }
 
@@ -249,6 +254,7 @@ growproc(int n)
   } else if(n < 0){
     sz = uvmdealloc(p->pagetable, sz, sz + n);
   }
+  kvmmapuser(p->kpagetable, p->pagetable, sz, p->sz);
   p->sz = sz;
   return 0;
 }
@@ -294,6 +300,8 @@ fork(void)
   pid = np->pid;
 
   np->state = RUNNABLE;
+
+  kvmmapuser(np->kpagetable, np->pagetable, np->sz,0);
 
   release(&np->lock);
 
@@ -473,11 +481,17 @@ scheduler(void)
         // before jumping back to us.
         p->state = RUNNING;
         c->proc = p;
+
+        w_satp(MAKE_SATP(p->kpagetable));
+        sfence_vma();
         swtch(&c->context, &p->context);
 
         // Process is done running for now.
         // It should have changed its p->state before coming back.
         c->proc = 0;
+
+        w_satp(MAKE_SATP(kernel_pagetable));
+        sfence_vma();
 
         found = 1;
       }

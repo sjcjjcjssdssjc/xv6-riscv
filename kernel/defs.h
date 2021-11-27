@@ -167,6 +167,15 @@ pagetable_t     uvmcreate(void);
 void            uvminit(pagetable_t, uchar *, uint);
 uint64          uvmalloc(pagetable_t, uint64, uint64);
 uint64          uvmdealloc(pagetable_t, uint64, uint64);
+void            kvmfree(pagetable_t kpagetable);
+pagetable_t     kvmcreate();
+void            ukvmmap(pagetable_t pagetable,uint64 va, uint64 pa, uint64 sz, int perm);
+void            kvmmapuser(pagetable_t kpagetable, pagetable_t upagetable, uint64 newsz, uint64 oldsz);
+
+// vmcopyin.c
+int             copyin_new(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len);
+int             copyinstr_new(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max);
+
 #ifdef SOL_COW
 #else
 int             uvmcopy(pagetable_t, pagetable_t, uint64);

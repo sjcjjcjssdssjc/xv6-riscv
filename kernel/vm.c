@@ -5,6 +5,8 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "spinlock.h"
+#include "proc.h"
 
 /*
  * the kernel's page table.
@@ -47,6 +49,50 @@ kvminit()
   kvmmap(TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
 }
 
+//user's k
+void
+ukvmmap(pagetable_t pagetable,uint64 va, uint64 pa, uint64 sz, int perm)
+{
+  if(mappages(pagetable, va, sz, pa, perm) != 0)
+    panic("uvmmap");
+}
+
+//user's k
+pagetable_t
+kvmcreate()
+{
+  int i;
+  pagetable_t pagetable = uvmcreate();//use uvmcreate(reuse)
+  for(i=1; i<512; i++){
+    pagetable[i] = kernel_pagetable[i];
+  }
+  
+  //these are in pagetable[0] because 30...38bits are zero(index is zero) in virtual address
+  ukvmmap(pagetable,UART0, UART0, PGSIZE, PTE_R | PTE_W);
+  ukvmmap(pagetable,VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);
+  ukvmmap(pagetable,CLINT, CLINT, 0x10000, PTE_R | PTE_W);
+  ukvmmap(pagetable,PLIC, PLIC, 0x400000, PTE_R | PTE_W);
+
+  return pagetable;
+}
+
+void 
+kvmfree(pagetable_t kpagetable)
+{
+  pte_t pte = kpagetable[0];
+  pagetable_t level1 = (pagetable_t)PTE2PA(pte);//pointer to middle level page table start address
+  for(int i = 0; i < 512; i++){
+    pte_t pte = level1[i];
+    if(pte & PTE_V){
+      kfree((void*)(PTE2PA(pte)));//free leaf page table(not pa)
+      level1[i] = 0;
+    }
+  }
+  kfree((void*) level1);
+  kfree((void*) kpagetable);
+}
+
+
 // Switch h/w page table register to the kernel's page table,
 // and enable paging.
 void
@@ -86,6 +132,31 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
     }
   }
   return &pagetable[PX(0, va)];
+}
+
+//copy pte from user page table into ukernel page table
+void 
+kvmmapuser(pagetable_t kpagetable, pagetable_t upagetable, uint64 newsz, uint64 oldsz)
+{
+  uint64 va;
+  pte_t* upte;
+  pte_t* kpte;
+  if(newsz >= PLIC)
+    panic("virtual address too high");
+  for(va = oldsz; va < newsz ; va += PGSIZE){
+    upte = walk(upagetable, va, 0);
+    if(upte == 0)
+      panic("no upte");
+    kpte = walk(kpagetable, va, 1);
+    if(kpte == 0)
+      panic("no kpte");
+    *kpte = *upte;
+    *kpte &= ~(PTE_W|PTE_U|PTE_X);
+  }
+  for(va = newsz; va < oldsz; va += PGSIZE){
+    kpte = walk(kpagetable, va, 1);
+    *kpte &= ~(PTE_V);
+  }
 }
 
 // Look up a virtual address, return the physical address,
@@ -379,8 +450,8 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 int
 copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
 {
+  return copyin_new(pagetable, dst, srcva, len);
   uint64 n, va0, pa0;
-
   while(len > 0){
     va0 = PGROUNDDOWN(srcva);
     pa0 = walkaddr(pagetable, va0);
@@ -405,6 +476,7 @@ copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
 int
 copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
 {
+  return copyinstr_new(pagetable, dst, srcva, max);
   uint64 n, va0, pa0;
   int got_null = 0;
 
