@@ -81,7 +81,7 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
     pte_t *pte = &pagetable[PX(level, va)];//30..38/21..29/12..20 to 0:8
     if(*pte & PTE_V) {
       pagetable = (pagetable_t)PTE2PA(*pte);
-    } else {
+    }else {
       if(!alloc || (pagetable = (pde_t*)kalloc()) == 0)
         return 0;
       memset(pagetable, 0, PGSIZE);
@@ -192,11 +192,17 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
     if(PTE_FLAGS(*pte) == PTE_V)
       panic("uvmunmap: not a leaf");
     refcount[PA2IND(pa)]--;
-    //if(!refcount[PA2IND(pa)] && !do_free){
-    //  printf("?\n");
-    //}
+
+    //if(refcount[PA2IND(pa)])
+    //  printf("%p %d\n",pa,refcount[PA2IND(pa)]);
+
+    /*
+    if(!refcount[PA2IND(pa)] && !do_free){
+      printf("?\n");
+    }
+    */
     if(do_free){
-      uint64 pa = PTE2PA(*pte);
+      pa = PTE2PA(*pte);
       kfree((void*)pa);
     }
     *pte = 0;
@@ -329,27 +335,21 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     if((*pte & PTE_V) == 0)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
-    flags = PTE_FLAGS(*pte);//lower 10bits
-  
-    if((*pte)&PTE_W){
-      (*pte) ^= PTE_W;
-    }
+
+    //printf("cow fork\n");
+    
+    (*pte) &= (~PTE_W);
     *pte |= PTE_COW;
-  
-    flags &= 0x3FB;//unmask the w bit
-    flags |= PTE_COW;
-
-    //if((mem = kalloc()) == 0)
-    //  goto err;
-    //mem is dst
-    //memmove(mem, (char*)pa, PGSIZE);
-
+    flags = PTE_FLAGS(*pte);//lower 10bits
+    //pte = walk(old, i, 0);
+    //printf("%p %p\n",*pte,flags);
     if(mappages(new, i, PGSIZE, (uint64)pa, flags) != 0){
       //kfree(mem);
       goto err;
     }
     //printf("forking,pa is %p %p\n",pa,PA2IND(pa));
     refcount[PA2IND(pa)]++;
+    
   }
   return 0;
 

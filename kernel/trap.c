@@ -70,7 +70,6 @@ usertrap(void)
     // ok
   } else if((r_scause()==15)){ //page faults (13 is lod page fault)
     uint64 va = r_stval();
-    //printf("page fault %p\n",va);
     pte_t * pte = walk(p->pagetable,va,0);
     uint64 pa = PTE2PA(*pte); 
     uint flags = PTE_FLAGS(*pte);
@@ -93,6 +92,8 @@ usertrap(void)
           //printf("freed\n");
           p->killed = 1;
         }
+        //pte = walk(p->pagetable,va,0);
+        //printf("%p\n",PTE_FLAGS(*pte));
       }
     }
   } else {
