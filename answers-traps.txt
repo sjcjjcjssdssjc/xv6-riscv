@@ -1,0 +1,6 @@
+a0-a7,a2(first arg a0 is address of printf?)
+main straightforwardly calcs the results and saves
+0x630
+ra=0x38
+HE110 World
+y=a2
