@@ -1,0 +1,16 @@
+If two CPUs execute push at the same time, both might
+execute line 15 as shown in Fig 6.1, before either executes line 16, which results in an incorrect
+outcome as illustrated by Figure 6.2. There would then be two list elements with next set to the
+former value of list . When the two assignments to list happen at line 16, the second one will
+overwrite the first; the element involved in the first assignment will be lost.
+
+you get the point
+void
+push(int data)
+{
+struct element *l;
+l = malloc(sizeof *l);
+l->data = data;
+l->next = list;
+list = l;
+}
