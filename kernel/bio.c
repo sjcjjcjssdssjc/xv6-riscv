@@ -38,6 +38,11 @@ binit(void)
 {
   struct buf *b;
 
+  char s[15]={"bcache"};
+  for(int i=0;i<8;i++){
+    s[6]='0'+i;
+    //printf("%s\n",s);
+  }
   initlock(&bcache.lock, "bcache");
 
   // Create linked list of buffers
