@@ -171,13 +171,13 @@ bfree(int dev, uint b)
 // dev, and inum.  One must hold ip->lock in order to
 // read or write that inode's ip->valid, ip->size, ip->type, &c.
 
-struct {
+struct { 
   struct spinlock lock;
   struct inode inode[NINODE];
 } icache;
 
 void
-iinit()
+iinit() 
 {
   int i = 0;
   
@@ -377,8 +377,8 @@ iunlockput(struct inode *ip)
 static uint
 bmap(struct inode *ip, uint bn)
 {
-  uint addr, *a;
-  struct buf *bp;
+  uint addr, *a, *b;
+  struct buf *bp,*cp,*dp;
 
   if(bn < NDIRECT){
     if((addr = ip->addrs[bn]) == 0)
@@ -391,7 +391,7 @@ bmap(struct inode *ip, uint bn)
     // Load indirect block, allocating if necessary.
     if((addr = ip->addrs[NDIRECT]) == 0)
       ip->addrs[NDIRECT] = addr = balloc(ip->dev);
-    bp = bread(ip->dev, addr);
+    bp = bread(ip->dev, addr);//bp is buf pointer
     a = (uint*)bp->data;
     if((addr = a[bn]) == 0){
       a[bn] = addr = balloc(ip->dev);
@@ -400,7 +400,30 @@ bmap(struct inode *ip, uint bn)
     brelse(bp);
     return addr;
   }
+  bn -= NINDIRECT;//this is right(don't be confused!)
 
+  if(bn < NDBINDIRECT){
+    if((addr = ip->addrs[NDIRECT + 1]) == 0)
+      ip->addrs[NDIRECT + 1] = addr = balloc(ip->dev);
+
+    cp = bread(ip->dev, addr);//cp is buf pointer
+    a = (uint*)cp->data;
+    if((addr = a[bn>>8]) == 0){
+      a[bn>>8] = addr = balloc(ip->dev);
+      log_write(cp);
+    }
+    brelse(cp);
+
+    dp = bread(ip->dev, addr);//dp is buf pointer
+    b = (uint*)dp->data;
+    if((addr = b[bn&255]) == 0){
+      b[bn&255] = addr = balloc(ip->dev);
+      log_write(dp);
+    }
+    brelse(dp);
+
+    return addr;
+  }
   panic("bmap: out of range");
 }
 
@@ -409,9 +432,9 @@ bmap(struct inode *ip, uint bn)
 void
 itrunc(struct inode *ip)
 {
-  int i, j;
-  struct buf *bp;
-  uint *a;
+  int i, j, k;
+  struct buf *bp, *cp;
+  uint *a, *b, *c;
 
   for(i = 0; i < NDIRECT; i++){
     if(ip->addrs[i]){
@@ -424,12 +447,34 @@ itrunc(struct inode *ip)
     bp = bread(ip->dev, ip->addrs[NDIRECT]);
     a = (uint*)bp->data;
     for(j = 0; j < NINDIRECT; j++){
-      if(a[j])
+      if(a[j]){
         bfree(ip->dev, a[j]);
+      }
     }
     brelse(bp);
     bfree(ip->dev, ip->addrs[NDIRECT]);
     ip->addrs[NDIRECT] = 0;
+  }
+
+  if(ip->addrs[NDIRECT+1]){
+    bp = bread(ip->dev, ip->addrs[NDIRECT+1]);
+    c = (uint*)bp->data;
+    for(j = 0; j < NINDIRECT; j++){
+      if(c[j]){
+        cp = bread(ip->dev, c[j]);
+        b = (uint*)cp->data;
+        for(k = 0; k < NINDIRECT; k++){
+          if(b[k]){
+            bfree(ip->dev, b[k]);
+          }
+        }
+        brelse(cp);
+        bfree(ip->dev, c[j]);
+      }
+    }
+    brelse(bp);
+    bfree(ip->dev, ip->addrs[NDIRECT+1]);
+    ip->addrs[NDIRECT+1] = 0;
   }
 
   ip->size = 0;
