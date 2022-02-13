@@ -15,7 +15,8 @@
 #include "sleeplock.h"
 #include "file.h"
 #include "fcntl.h"
-
+static struct inode*
+create(char *path, short type, short major, short minor);
 // Fetch the nth word-sized system call argument as a file descriptor
 // and return both the descriptor and the corresponding struct file.
 static int
@@ -114,6 +115,38 @@ sys_fstat(void)
     return -1;
   return filestat(f, st);
 }
+uint64
+sys_symlink(void)
+{
+  char target[MAXPATH], path[MAXPATH];
+  //creates a new symbolic link at path that refers to file named by target(also a path).
+  struct inode *dp, *ip;
+
+  if(argstr(0, target, MAXPATH) < 0 || argstr(1, path, MAXPATH) < 0)
+    return -1;
+  begin_op();
+  dp = create(path, T_SYMLINK, 0, 0);
+  if(dp == 0){
+    end_op();
+    return -1;
+  }
+  if((ip = namei(target)) == 0){//fs.c:path to inode
+    end_op();
+    return -1;
+  }
+  //do not have to handle symbolic links to directories for this lab
+  ilock(ip);
+  printf("write %s\n",target);
+  if(writei(dp, 0, (uint64)&target, 0, sizeof(target)) != sizeof(target))
+    panic("write symlink");
+
+  ip->nlink++;//nlink is different from refcount
+  iupdate(ip);
+  iunlock(ip);
+  iput(ip);//fs.c: refcount--
+  end_op();
+  return 0;
+}
 
 // Create the path new as a link to the same inode as old.
 uint64
@@ -126,7 +159,7 @@ sys_link(void)
     return -1;
 
   begin_op();
-  if((ip = namei(old)) == 0){
+  if((ip = namei(old)) == 0){//fs.c:path to inode
     end_op();
     return -1;
   }
@@ -138,11 +171,11 @@ sys_link(void)
     return -1;
   }
 
-  ip->nlink++;
+  ip->nlink++;//nlink is different from refcount
   iupdate(ip);
   iunlock(ip);
 
-  if((dp = nameiparent(new, name)) == 0)
+  if((dp = nameiparent(new, name)) == 0)// a/b/c/d: name is d, dp is inode number of c(father of d)
     goto bad;
   ilock(dp);
   if(dp->dev != ip->dev || dirlink(dp, name, ip->inum) < 0){
@@ -150,7 +183,7 @@ sys_link(void)
     goto bad;
   }
   iunlockput(dp);
-  iput(ip);
+  iput(ip);//fs.c: refcount--
 
   end_op();
 
@@ -304,7 +337,7 @@ sys_open(void)
       return -1;
     }
   } else {
-    if((ip = namei(path)) == 0){
+    if((ip = namei(path)) == 0){ //if the file does not exist, open must fail. 
       end_op();
       return -1;
     }
@@ -316,12 +349,43 @@ sys_open(void)
     }
   }
 
-  if(ip->type == T_DEVICE && (ip->major < 0 || ip->major >= NDEV)){
-    iunlockput(ip);
-    end_op();
-    return -1;
-  }
+  int cnt=0;
+  //add
+  while(ip->type == T_SYMLINK){
 
+    if(cnt >= 10){
+      panic("cycle");
+      iunlockput(ip);
+      end_op();
+      return -1;
+    }
+    else if(cnt && (omode & O_NOFOLLOW)){
+      break;
+    }
+    if(readi(ip, 0, (uint64)&path, 0, sizeof(path)) != sizeof(path))
+      panic("open symlink");
+    printf("read %s\n",path);
+    iunlockput(ip);//previous ip is out
+    if((ip = namei(path)) == 0){ //if the file does not exist, open must fail. 
+      end_op();
+      return -1;
+    }
+    ilock(ip);
+    if(ip->type == T_DIR && omode != O_RDONLY){
+      iunlockput(ip);
+      end_op();
+      return -1;
+    }
+    //no follow,cycle
+
+    if(ip->type == T_DEVICE && (ip->major < 0 || ip->major >= NDEV)){
+      iunlockput(ip);
+      end_op();
+      return -1;
+    }
+    cnt++;
+  }
+  
   if((f = filealloc()) == 0 || (fd = fdalloc(f)) < 0){
     if(f)
       fileclose(f);
