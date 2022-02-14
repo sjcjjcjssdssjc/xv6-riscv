@@ -77,8 +77,6 @@ balloc(uint dev)
         log_write(bp);
         brelse(bp);
         bzero(dev, b + bi);
-        if((b+bi)%100 == 0)
-          printf("%d\n",b+bi);
         return b + bi;
       }
     }
@@ -610,6 +608,7 @@ dirlink(struct inode *dp, char *name, uint inum)
   // Check that name is not present.
   if((ip = dirlookup(dp, name, 0)) != 0){
     iput(ip);
+    printf("found\n");
     return -1;
   }
 

@@ -76,8 +76,10 @@ testsymlink(void)
 
   if (stat_slink("/testsymlink/b", &st) != 0)
     fail("failed to stat b");
-  if(st.type != T_SYMLINK)
+  if(st.type != T_SYMLINK){
+    printf("%d\n",st.type);//change
     fail("b isn't a symlink");
+  }
 
   fd2 = open("/testsymlink/b", O_RDWR);
   if(fd2 < 0)
