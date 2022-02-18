@@ -69,23 +69,33 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
-  } else if(r_scause()==13 || r_scause()==15){ 
+  } else if(r_scause()==13 || r_scause()==15){ //15
     uint64 va = r_stval();
-    //printf("page fault %p\n",va);
-    if(va >= p->sz){
+    //uint64 *sp = (uint64 *) r_sp();
+
+    //printf("%p %p\n",va,*sp);
+    if(va >= p->sz){ // va starts from 0
       p->killed = 1;
-    }
-    else{
+    }else{ 
       uint64 ka = (uint64) kalloc();//pa for va
       if(ka == 0){
         p->killed = 1;
       } else {
-        memset((void *)ka,0,PGSIZE);
+        memset((void *)ka,0,PGSIZE);//pgsize is 4096
+        //printf("va is %p\n",va);
         va = PGROUNDDOWN(va);
+
+        /*
+        if(va >= 0x8000000){      
+          kfree((void *)ka);
+          p->killed = 1;
+        } 
+        */
         if(mappages(p->pagetable, va, PGSIZE, ka, PTE_W|PTE_U|PTE_R) != 0){
           kfree((void *)ka);
           p->killed = 1;
         }
+        //printf("%p good\n",va);
       }
     }
   } else {

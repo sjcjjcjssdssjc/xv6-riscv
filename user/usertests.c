@@ -2398,6 +2398,7 @@ stacktest(char *s)
     char *sp = (char *) r_sp();
     sp -= PGSIZE;
     // the *sp should cause a trap.
+    printf("start\n");
     printf("%s: stacktest: read below stack %p\n", *sp);
     exit(1);
   } else if(pid < 0){
