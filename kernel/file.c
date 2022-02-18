@@ -161,7 +161,7 @@ filewrite(struct file *f, uint64 addr, int n)
 
       begin_op();
       ilock(f->ip);
-      if ((r = writei(f->ip, 1, addr + i, f->off, n1)) > 0)
+      if ((r = writei(f->ip, 1, addr + i, f->off, n1)) > 0)//fs.c
         f->off += r;
       iunlock(f->ip);
       end_op();

@@ -5,6 +5,8 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "spinlock.h"
+#include "proc.h"
 
 /*
  * the kernel's page table.
@@ -360,8 +362,6 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 
   while(len > 0){
     va0 = PGROUNDDOWN(dstva);
-    //pte_t *pte = walk(pagetable, va0, 1);
-    //pa0 = PTE2PA(*pte);
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0){
       /*
@@ -402,27 +402,25 @@ copyin(pagetable_t pagetable, char *dst, uint64 srcva, uint64 len)
 
   while(len > 0){
     va0 = PGROUNDDOWN(srcva);
+    if(va0 >= myproc()->sz){
+      return -1;
+    }
     //pte_t *pte = walk(pagetable, va0, 1);
     //pa0 = PTE2PA(*pte);
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0){
-      /*
-      uint64 ka = (uint64) kalloc();
-      if(ka == 0)return -1;
+
+      pa0 = (uint64) kalloc();
+      if(pa0 == 0)return -1;
       else {
-        pa0 = (uint64) kalloc();
-        if(pa0 == 0)return -1;
-        else {
-          memset((void *)pa0,0,PGSIZE);
-          va0 = PGROUNDDOWN(va0);
-          if(mappages(pagetable, va0, PGSIZE, pa0, PTE_W|PTE_U|PTE_R) != 0){
-            kfree((void *)pa0);
-            return -1;
-          }
+        memset((void *)pa0,0,PGSIZE);
+        va0 = PGROUNDDOWN(va0);
+        if(mappages(pagetable, va0, PGSIZE, pa0, PTE_W|PTE_U|PTE_R) != 0){
+          kfree((void *)pa0);
+          return -1;
         }
       }
-      */
-      return -1;
+      
     }
     //*pte |= PTE_U;
     n = PGSIZE - (srcva - va0);
@@ -449,11 +447,12 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
 
   while(got_null == 0 && max > 0){
     va0 = PGROUNDDOWN(srcva);
-    //pte_t *pte = walk(pagetable, va0, 1);
-    //pa0 = PTE2PA(*pte);
+    if(va0 >= myproc()->sz){
+      return -1;
+    }
     pa0 = walkaddr(pagetable, va0);
     if(pa0 == 0){
-      /*
+      
       pa0 = (uint64) kalloc();
       if(pa0 == 0)return -1;
       else {
@@ -464,7 +463,7 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
           return -1;
         }
       }
-      */
+      
       return -1;
     }
     //*pte |= PTE_U;
