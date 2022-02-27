@@ -5,9 +5,16 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
-
+#include "vm.h"
+#include "fcntl.h"
+#include "fs.h"
+#include "sleeplock.h"
+#include "file.h"
 struct spinlock tickslock;
 uint ticks;
+
+extern struct vma vma[16];
+extern int tot;
 
 extern char trampoline[], uservec[], userret[];
 
@@ -67,6 +74,55 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
+  } else if(r_scause()==13 || r_scause()==15){ //15
+    uint64 va = r_stval();
+    //uint64 *sp = (uint64 *) r_sp();
+
+    printf("%p\n",va);
+    if(va >= p->sz){ // va starts from 0
+      p->killed = 1;
+    }else{ 
+      uint64 ka = (uint64) kalloc();//pa for va
+      if(ka == 0){
+        p->killed = 1;
+      } else {
+        struct file *f=0;
+        int i;
+        for(i = 0;i < tot;i++){
+            if(va < vma[i].va+vma[i].length){
+                f = vma[i].f;
+                break;
+            }
+        }
+        if(i==tot){
+          kfree((void *)ka);
+          p->killed = 1;
+        }
+        ilock(f->ip);
+        // int readi(struct inode *ip, int user_dst, uint64 dst, uint off, uint n)
+        // Read data from inode.
+        // Caller must hold ip->lock.
+        // If user_dst==1, then dst is a user virtual address;
+        // otherwise, dst is a kernel address.
+        int r = 0;
+        if((r = readi(f->ip, 1, va, 0, PGSIZE)) != PGSIZE){
+          kfree((void *)ka);
+          p->killed = 1;
+        }
+        iunlock(f->ip);
+        memset((void *)ka,0,PGSIZE);//pgsize is 4096
+        //printf("va is %p\n",va);
+        va = PGROUNDDOWN(va);
+        int W=0,R=0;
+        if(vma[i].flags & PROT_READ)R |= PTE_R;
+        if(vma[i].flags & PROT_WRITE)W |= PTE_W;
+        if(mappages(p->pagetable, va, PGSIZE, ka,PTE_U|W|R) != 0){
+          
+          kfree((void *)ka);
+          p->killed = 1;
+        }
+      }
+    }
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());

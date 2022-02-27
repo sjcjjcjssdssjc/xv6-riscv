@@ -13,9 +13,11 @@
 #include "proc.h"
 #include "fs.h"
 #include "sleeplock.h"
-#include "file.h"
 #include "fcntl.h"
-
+#include "vm.h"
+#include "file.h"
+struct vma vma[16];
+int tot=0;
 // Fetch the nth word-sized system call argument as a file descriptor
 // and return both the descriptor and the corresponding struct file.
 static int
@@ -72,7 +74,7 @@ sys_read(void)
   struct file *f;
   int n;
   uint64 p;
-
+  //fd,address cbyte
   if(argfd(0, 0, &f) < 0 || argint(2, &n) < 0 || argaddr(1, &p) < 0)
     return -1;
   return fileread(f, p, n);
@@ -485,13 +487,45 @@ sys_pipe(void)
   return 0;
 }
 
-uint64 
-sys_munmap(void)
-{
-  return -1;
-}
+//flags will be either MAP_SHARED, meaning that modifications to the mapped 
+//memory should be written back to the file, or MAP_PRIVATE, meaning that they should not. 
+//You don't have to implement any other bits in flags. 
+uint64  
+sys_munmap(void)//offset is always 0
+{ 
+  return 0;
+} 
+
+//offset and addr is always 0 
+//return the virtual address mapped
+//prot is PROT_READ or PROT_WRITE or both.
 uint64 
 sys_mmap(void)
 {
-  return -1;
+  struct file *f;
+  uint64 va,length;//length
+  int prot,flags;
+  //no need for 0(allocate by kernel)
+  //no need for 5:offset
+  if(argaddr(1, &length) < 0 || argint(2, &prot) < 0 || argint(3, &flags) < 0 || argfd(4, 0, &f) < 0)
+    return -1;
+
+  //find a free pa
+  for(uint64 i=0;;i+=PGSIZE){
+    if(walkaddr(myproc()->pagetable, i) == 0){
+      va = i;
+      break;//why remap
+    }
+  }
+  fileread(f, va, length);
+  //struct file *f;
+  vma[tot].f=f;
+  vma[tot].va=va;
+  vma[tot].length=length;
+  vma[tot].prot=prot;
+  vma[tot].flags=flags;
+  filedup(f);
+  tot++;
+
+  return va;
 }
