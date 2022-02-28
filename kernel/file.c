@@ -110,8 +110,7 @@ fileread(struct file *f, uint64 addr, int n)
 
   if(f->readable == 0)
     return -1;
-
-  if(f->type == FD_PIPE){
+  if(f->type == FD_PIPE){//type is inode
     r = piperead(f->pipe, addr, n);
   } else if(f->type == FD_DEVICE){
     if(f->major < 0 || f->major >= NDEV || !devsw[f->major].read)
@@ -122,6 +121,7 @@ fileread(struct file *f, uint64 addr, int n)
     if((r = readi(f->ip, 1, addr, f->off, n)) > 0)
       f->off += r;
     iunlock(f->ip);
+    printf("rrread  %d\n",r);
   } else {
     panic("fileread");
   }

@@ -77,50 +77,56 @@ usertrap(void)
   } else if(r_scause()==13 || r_scause()==15){ //15
     uint64 va = r_stval();
     //uint64 *sp = (uint64 *) r_sp();
-
-    printf("%p\n",va);
-    if(va >= p->sz){ // va starts from 0
+    uint64 ka = (uint64) kalloc();//pa for va
+    if(ka == 0){
       p->killed = 1;
-    }else{ 
-      uint64 ka = (uint64) kalloc();//pa for va
-      if(ka == 0){
+    } else {
+      struct file *f=0;
+      int i = 0;
+      for(i = 0;i < tot;i++){ 
+        //printf("PF:%p %p\n",va,vma[i].va);
+        if(va == vma[i].va){
+            f = vma[i].f;
+            break;
+        }
+      }
+      if(i==tot){
+        kfree((void *)ka);
         p->killed = 1;
-      } else {
-        struct file *f=0;
-        int i;
-        for(i = 0;i < tot;i++){
-            if(va < vma[i].va+vma[i].length){
-                f = vma[i].f;
-                break;
-            }
-        }
-        if(i==tot){
-          kfree((void *)ka);
-          p->killed = 1;
-        }
-        ilock(f->ip);
+      }
+      else{
+        //printf("pgfon %p i %d tot %d case %d\n",va,i,tot,r_scause());
+        
         // int readi(struct inode *ip, int user_dst, uint64 dst, uint off, uint n)
-        // Read data from inode.
-        // Caller must hold ip->lock.
-        // If user_dst==1, then dst is a user virtual address;
-        // otherwise, dst is a kernel address.
+        // Read data from inode. Caller must hold ip->lock.
+        // If user_dst==1, then dst is a user virtual address;otherwise, dst is a kernel address.
+        va = PGROUNDDOWN(va);
+        int W=0,R=0;
+        if(vma[i].prot & PROT_READ)R |= PTE_R;
+        if(vma[i].prot & PROT_WRITE)W |= PTE_W;
+        for(;;va += PGSIZE){
+          //printf("search %p res %d\n",0x201000,mmapwalk(myproc()->pagetable,0x201000));
+          if(mmapwalk(myproc()->pagetable,va) != 0)continue;
+          if(mappages(p->pagetable, va, PGSIZE, ka,PTE_U|W|R) == 0){
+            break;
+          }
+        }
+        //printf("alloc on %p\n",va);
+        memset((void *)ka,0,PGSIZE);//pgsize is 4096
         int r = 0;
-        if((r = readi(f->ip, 1, va, 0, PGSIZE)) != PGSIZE){
+        ilock(f->ip);
+        if((r = readi(f->ip, 0, ka, vma[i].offset, PGSIZE)) == 0){//0,ka?
           kfree((void *)ka);
           p->killed = 1;
         }
         iunlock(f->ip);
-        memset((void *)ka,0,PGSIZE);//pgsize is 4096
-        //printf("va is %p\n",va);
-        va = PGROUNDDOWN(va);
-        int W=0,R=0;
-        if(vma[i].flags & PROT_READ)R |= PTE_R;
-        if(vma[i].flags & PROT_WRITE)W |= PTE_W;
-        if(mappages(p->pagetable, va, PGSIZE, ka,PTE_U|W|R) != 0){
-          
-          kfree((void *)ka);
-          p->killed = 1;
+        for(int i=0;i<PGSIZE/8;i++){
+          //printf("%p %p\n",((uint64 *)ka)+i,*(((uint64 *)ka)+i));
+          //0x41 on every byte is right
         }
+        vma[i].va = va + PGSIZE;
+        vma[i].offset += r;
+        //printf("new va is %p ka is %p\n",vma[i].va,ka);
       }
     }
   } else {

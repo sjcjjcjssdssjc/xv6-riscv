@@ -509,16 +509,18 @@ sys_mmap(void)
   //no need for 5:offset
   if(argaddr(1, &length) < 0 || argint(2, &prot) < 0 || argint(3, &flags) < 0 || argfd(4, 0, &f) < 0)
     return -1;
-
-  //find a free pa
-  for(uint64 i=0;;i+=PGSIZE){
-    if(walkaddr(myproc()->pagetable, i) == 0){
-      va = i;
-      break;//why remap
+  va = 0x0;
+  for(;;va += PGSIZE){ 
+    int ok=1;
+    for(uint64 i = 0;i < length;i += PGSIZE){
+      if(mmapwalk(myproc()->pagetable,va + i) != 0){
+        ok=0;
+        break;
+      }
     }
+    if(ok==1)break;
   }
-  fileread(f, va, length);
-  //struct file *f;
+  vma[tot].offset=0;
   vma[tot].f=f;
   vma[tot].va=va;
   vma[tot].length=length;
