@@ -76,7 +76,6 @@ usertrap(void)
     // ok
   } else if(r_scause()==13 || r_scause()==15){ //15
     uint64 va = r_stval();
-    //uint64 *sp = (uint64 *) r_sp();
     uint64 ka = (uint64) kalloc();//pa for va
     if(ka == 0){
       p->killed = 1;
@@ -95,8 +94,6 @@ usertrap(void)
         p->killed = 1;
       }
       else{
-        //printf("pgfon %p i %d tot %d case %d\n",va,i,tot,r_scause());
-        
         // int readi(struct inode *ip, int user_dst, uint64 dst, uint off, uint n)
         // Read data from inode. Caller must hold ip->lock.
         // If user_dst==1, then dst is a user virtual address;otherwise, dst is a kernel address.
