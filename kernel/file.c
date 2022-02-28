@@ -121,7 +121,6 @@ fileread(struct file *f, uint64 addr, int n)
     if((r = readi(f->ip, 1, addr, f->off, n)) > 0)
       f->off += r;
     iunlock(f->ip);
-    printf("rrread  %d\n",r);
   } else {
     panic("fileread");
   }

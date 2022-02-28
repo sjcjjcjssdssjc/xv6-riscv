@@ -18,6 +18,10 @@
 #include "file.h"
 struct vma vma[16];
 int tot=0;
+extern struct {
+  struct spinlock lock;
+  struct file file[NFILE];
+} ftable;
 // Fetch the nth word-sized system call argument as a file descriptor
 // and return both the descriptor and the corresponding struct file.
 static int
@@ -493,9 +497,47 @@ sys_pipe(void)
 uint64  
 sys_munmap(void)//offset is always 0
 { 
+   
+  uint64 addr,length;
+  if(argaddr(0, &addr) < 0 || argaddr(1, &length) < 0)
+    return -1;
+  struct file *f=0;
+  int i = 0;
+  for(i = 0;i < tot;i++){ 
+    if(addr >= vma[i].base && addr < vma[i].base + length){
+        f = vma[i].f;
+        break;
+    }
+  }
+  if(i == tot)return -1;
+  //printf("from:%d %d %d %d tot %d\n",vma[i].va, vma[i].length, vma[i].offset, vma[i].base,tot);
+  for(uint va = addr;va < addr + length ;va += PGSIZE){
+    if(va >= vma[i].base && va < vma[i].base + vma[i].length){
+      if(mmapwalk(myproc()->pagetable,va + i) == 0)break;//no content
+      if(vma[i].flags & MAP_SHARED)filewrite(f, va, PGSIZE);
+      uvmunmap(myproc()->pagetable, va, 1, 1);
+    }
+  }
+  if(addr > vma[i].base && addr < vma[i].base + vma[i].length){//next allocated address(cover the end)
+    vma[i].length -= vma[i].base + vma[i].length - addr;
+    vma[i].va = addr;
+  }
+  else if(addr + length > vma[i].base){//(cover the start)
+    vma[i].length -= addr + length - vma[i].base; 
+    vma[i].base = addr + length;
+  }
+  //printf("to:%d %d %d %d\n",vma[i].va, vma[i].length, vma[i].offset, vma[i].base);
+  if(vma[i].length == 0){
+    tot--;
+    acquire(&ftable.lock);
+    f->ref--;
+    release(&ftable.lock);
+  }
+  //all cover
+
   return 0;
 } 
-
+uint64 now=0;
 //offset and addr is always 0 
 //return the virtual address mapped
 //prot is PROT_READ or PROT_WRITE or both.
@@ -517,7 +559,7 @@ sys_mmap(void)
   || ((!f->writable) && (prot & PROT_WRITE)))){
     return -1;
   }
-  va = 0x0;
+  va = now;
   for(;;va += PGSIZE){ 
     int ok=1;
     for(uint64 i = 0;i < length;i += PGSIZE){
@@ -534,8 +576,10 @@ sys_mmap(void)
   vma[tot].length=length;
   vma[tot].prot=prot;
   vma[tot].flags=flags;
+  vma[tot].base=va;
+  vma[tot].L=va;
   filedup(f);
   tot++;
-
+  now = va + length;
   return va;
 }
