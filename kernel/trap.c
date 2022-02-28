@@ -124,8 +124,8 @@ usertrap(void)
           //printf("%p %p\n",((uint64 *)ka)+i,*(((uint64 *)ka)+i));
           //0x41 on every byte is right
         }
-        vma[i].va = va + PGSIZE;
-        vma[i].offset += r;
+        vma[i].offset += PGSIZE;
+        if(vma[i].offset != vma[i].length)vma[i].va = va + PGSIZE;
         //printf("new va is %p ka is %p\n",vma[i].va,ka);
       }
     }

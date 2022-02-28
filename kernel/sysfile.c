@@ -509,6 +509,14 @@ sys_mmap(void)
   //no need for 5:offset
   if(argaddr(1, &length) < 0 || argint(2, &prot) < 0 || argint(3, &flags) < 0 || argfd(4, 0, &f) < 0)
     return -1;
+  if((flags & MAP_SHARED) && ((f->readable && !(prot & PROT_READ))  
+  || ((!f->readable) && (prot & PROT_READ)))){
+    return -1;
+  }
+  if((flags & MAP_SHARED) && ((f->writable && !(prot & PROT_WRITE)) 
+  || ((!f->writable) && (prot & PROT_WRITE)))){
+    return -1;
+  }
   va = 0x0;
   for(;;va += PGSIZE){ 
     int ok=1;
