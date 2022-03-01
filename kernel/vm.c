@@ -330,7 +330,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 
   for(i = 0; i < sz; i += PGSIZE){
     //walk(pagetable_t pagetable, uint64 va, int alloc)
-    if((pte = walk(old, i, 0)) == 0)//father's pte changed to not Wable
+    if((pte = walk(old, i, 1)) == 0)//father's pte changed to not Wable
       panic("uvmcopy: pte should exist");
     if((*pte & PTE_V) == 0)
       panic("uvmcopy: page not present");
@@ -354,6 +354,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   return 0;
 
  err:
+  printf("err\n");
   uvmunmap(new, 0, i / PGSIZE, 1);
   return -1;
 }
