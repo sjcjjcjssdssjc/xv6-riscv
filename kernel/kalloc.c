@@ -40,11 +40,12 @@ freerange(void *pa_start, void *pa_end)
   for(; p + PGSIZE <= (char*)pa_end; p += PGSIZE)
     kfree(p);
 }
-
+int ttt=0;
 // Free the page of physical memory pointed at by v,
 // which normally should have been returned by a
 // call to kalloc().  (The exception is when
 // initializing the allocator; see kinit above.)
+// freerange
 void
 kfree(void *pa)
 {
@@ -63,6 +64,7 @@ kfree(void *pa)
     release(&kmem.lock);
     //cnt--;
   }
+  else{ttt++;printf("%d\n",ttt);}
 }
 
 // Allocate one 4096-byte page of physical memory.
@@ -82,8 +84,6 @@ kalloc(void)
   if(r){
     memset((char*)r, 5, PGSIZE); // fill with junk
     refcount[PA2IND(r)]=1;
-    //cnt++;
-    //printf("%d ",cnt);
   }
   //b kalloc.c:83
   return (void*)r;

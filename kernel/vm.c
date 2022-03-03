@@ -191,17 +191,14 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
       panic("uvmunmap: not mapped");
     if(PTE_FLAGS(*pte) == PTE_V)
       panic("uvmunmap: not a leaf");
-    refcount[PA2IND(pa)]--;
-
-    //if(refcount[PA2IND(pa)])
-    //  printf("%p %d\n",pa,refcount[PA2IND(pa)]);
 
     /*
     if(!refcount[PA2IND(pa)] && !do_free){
-      printf("?\n");
+      printf("? %p\n",pa);
     }
     */
     if(do_free){
+      refcount[PA2IND(pa)]--;
       pa = PTE2PA(*pte);
       kfree((void*)pa);
     }
@@ -327,7 +324,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-
+  //printf("%d\n", sz/PGSIZE);
   for(i = 0; i < sz; i += PGSIZE){
     //walk(pagetable_t pagetable, uint64 va, int alloc)
     if((pte = walk(old, i, 1)) == 0)//father's pte changed to not Wable
@@ -336,13 +333,11 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
       panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
 
-    //printf("cow fork\n");
-    
     (*pte) &= (~PTE_W);
     *pte |= PTE_COW;
     flags = PTE_FLAGS(*pte);//lower 10bits
     //pte = walk(old, i, 0);
-    //printf("%p %p\n",*pte,flags);
+    //printf("uvmcopy %p %p\n",*pte,flags);
     if(mappages(new, i, PGSIZE, (uint64)pa, flags) != 0){
       //kfree(mem);
       goto err;
@@ -394,32 +389,25 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
     uint flags = PTE_FLAGS(*pte);
    
     if(((*pte)&PTE_COW) && !((*pte)&PTE_W)){
-      
-      //printf("%p\n",flags);
       n = PGSIZE - (dstva - va0);
       if(n > len)
         n = len;
       uint64 ka0 = (uint64) kalloc();//pa for va
-      //printf("copying on write1 va0:%p pa0:%p ref count = %d\n",va0,pa0,refcount[PA2IND(pa0)]);
       if(ka0 == 0){
         goto err;
       } else{
         //va is dst
-        memmove((char *)ka0, (char *)pa0, PGSIZE-n);//important
-        memmove((char *)(ka0 + (dstva - va0)), src, n);
-        //printf("%p before:%d\n",pa0,refcount[PA2IND(pa0)]);//
-        uvmunmap(pagetable,va0,1,1);
+        memmove((char *)ka0, (char *)pa0, PGSIZE-n);//important va0->pa0
+        memmove((char *)(ka0 + (dstva - va0)), src, n);//src is kernel address(physical)
+        uvmunmap(pagetable, va0, 1, 1);
         if(mappages(pagetable, va0, PGSIZE, ka0, PTE_W|flags) != 0){//unmap+ -1inref count?
           kfree((void *)ka0);
           goto err;
         }
-        i++;
-        //printf("%p after:%d\n",pa0,refcount[PA2IND(pa0)]);
-        //printf("copying on write2 va0:%p ka0:%p ref count = %d\n",va0,ka0,refcount[PA2IND(ka0)]);
-        //printf("mapped\n");
       }
       len -= n;
       src += n;
+      i += n;
       dstva = va0 + PGSIZE;
     } else{
       //printf("%d\n",((*pte)&PTE_COW));
@@ -436,8 +424,8 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
   return 0;
 
   err:
-    //printf("err\n");//to be changed
-    //uvmunmap(pagetable, dstva, i / PGSIZE, 1);
+    //printf("err\n");
+    uvmunmap(pagetable, PGROUNDDOWN(dstva), i / PGSIZE, 1);
     return -1;
 }
 

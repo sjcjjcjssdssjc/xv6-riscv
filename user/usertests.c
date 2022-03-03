@@ -2785,7 +2785,7 @@ main(int argc, char *argv[])
     printf("SOME TESTS FAILED\n");
     exit(1);
   } else if((free1 = countfree()) < free0){
-    printf("FAILED -- lost some free pages %d (out of %d)\n", free1, free0);
+    printf("FAILED -- lost some free pages %d (out of %d)\n", free1, free0);//no fork and fail
     exit(1);
   } else {
     printf("ALL TESTS PASSED\n");
