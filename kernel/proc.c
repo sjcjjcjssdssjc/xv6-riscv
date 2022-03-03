@@ -5,7 +5,11 @@
 #include "spinlock.h"
 #include "proc.h"
 #include "defs.h"
-
+#include "vm.h"
+#include "fcntl.h"
+#include "sleeplock.h"
+#include "fs.h"
+#include "file.h"
 struct cpu cpus[NCPU];
 
 struct proc proc[NPROC];
@@ -21,7 +25,13 @@ static void freeproc(struct proc *p);
 
 extern char trampoline[]; // trampoline.S
 
-
+extern struct vma vma[16];
+extern int tot;
+extern struct {
+  struct spinlock lock;
+  struct file file[NFILE];
+} ftable;
+pte_t * walk(pagetable_t pagetable, uint64 va, int alloc);
 // Allocate a page for each process's kernel stack.
 // Map it high in memory, followed by an invalid
 // guard page.
@@ -273,7 +283,14 @@ fork(void)
   if((np = allocproc()) == 0){
     return -1;
   }
-
+  struct file *f = 0;
+  for(int i = 0; i < tot; i++){
+    f = vma[i].f;
+    filedup(f);
+    vma[tot + i] = vma[i];
+    vma[tot + i].pid = np->pid;
+  }
+  tot *= 2;
   // Copy user memory from parent to child.
   if(uvmcopy(p->pagetable, np->pagetable, p->sz) < 0){
     freeproc(np);
@@ -304,6 +321,26 @@ fork(void)
 
   release(&np->lock);
 
+  for(int i = 0; i < tot/2; i++){
+    f = vma[i].f;
+    uint64 va;
+    for(va = vma[i].L; va < vma[i].L + vma[i].length; va += PGSIZE){
+      uint64 pa;
+      pte_t *pte;
+      pa = walkaddr(p->pagetable, va);
+      if(pa == 0) continue;
+      pte = walk(p->pagetable, va, 0);
+      //printf("********%p******** %d\n",va,PTE_FLAGS(*pte));
+      uint64 ka = (uint64) kalloc();//pa for va
+      if(ka == 0) return -1;
+      if(mappages(np->pagetable, va, PGSIZE, ka, PTE_FLAGS(*pte)) != 0){
+        printf("fail\n");
+        kfree((void *)ka);
+        return -1;
+      }
+      memmove((void *)ka, (void *)pa, PGSIZE);
+    }
+  }
   return pid;
 }
 
@@ -352,7 +389,29 @@ exit(int status)
       p->ofile[fd] = 0;
     }
   }
-
+  struct file *f = 0;
+  int i = 0, cnt = 0;
+  for(i = 0;i < tot;i++){ 
+    if(vma[i].length && vma[i].pid == myproc()->pid){
+        f = vma[i].f;
+        for(uint va = vma[i].base;va < vma[i].base + vma[i].length;va += PGSIZE){
+          if(mmapwalk(myproc()->pagetable,va + i) == 0)continue;//no content
+          if(vma[i].flags & MAP_SHARED)filewrite(f, va, PGSIZE);
+          uint64 pa = walkaddr(myproc()->pagetable,va);
+          acquire(&ftable.lock);
+          printf("exitunmap: %d va:%p pa:%p refcnt %d\n",myproc()->pid,va,pa,f->ref);
+          release(&ftable.lock);
+          uvmunmap(myproc()->pagetable, va, 1, 1);
+        }
+        vma[i].length = 0;
+        acquire(&ftable.lock);
+        f->ref--;
+        release(&ftable.lock);
+    }
+    else vma[cnt++] = vma[i];
+  }
+  tot = cnt;
+  
   begin_op();
   iput(p->cwd);
   end_op();

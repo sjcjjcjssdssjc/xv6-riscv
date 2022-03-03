@@ -82,18 +82,22 @@ usertrap(void)
     } else {
       struct file *f=0;
       int i = 0;
-      for(i = 0;i < tot;i++){ 
-        //printf("PF:%p %p\n",va,vma[i].va);
-        if(va == vma[i].va){
+      printf("totis %d\n",tot);
+      for(i = 0;i < tot; i++){ 
+        printf("pids: %d %d\n",vma[i].pid, myproc()->pid);
+        if(va >= vma[i].L && va < vma[i].L + vma[i].length && vma[i].pid == myproc()->pid){
+        //if(va == vma[i].va && vma[i].va != vma[i].base + vma[i].length){
             f = vma[i].f;
             break;
         }
       }
       if(i==tot){
+        printf("kill\n");
         kfree((void *)ka);
         p->killed = 1;
       }
       else{
+        printf("pid %p va:%p L:%p length:%p ka:%p\n",myproc()->pid,va,vma[i].L,vma[i].length,ka);
         // int readi(struct inode *ip, int user_dst, uint64 dst, uint off, uint n)
         // Read data from inode. Caller must hold ip->lock.
         // If user_dst==1, then dst is a user virtual address;otherwise, dst is a kernel address.
@@ -112,17 +116,12 @@ usertrap(void)
         memset((void *)ka,0,PGSIZE);//pgsize is 4096
         int r = 0;
         ilock(f->ip);
-        if((r = readi(f->ip, 0, ka, vma[i].offset, PGSIZE)) == 0){//0,ka?
+        if((r = readi(f->ip, 0, ka, va - vma[i].L, PGSIZE)) == 0){//0,ka?
           kfree((void *)ka);
           p->killed = 1;
         }
         iunlock(f->ip);
-        for(int i=0;i<PGSIZE/8;i++){
-          //printf("%p %p\n",((uint64 *)ka)+i,*(((uint64 *)ka)+i));
-          //0x41 on every byte is right
-        }
-        vma[i].offset += PGSIZE;
-        vma[i].va = va + PGSIZE;
+        vma[i].va = va + PGSIZE;//not gonna exceed because the vma[i].va - vma[i].L check
         //printf("new va is %p ka is %p\n",vma[i].va,ka);
       }
     }

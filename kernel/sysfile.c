@@ -490,47 +490,55 @@ sys_pipe(void)
   }
   return 0;
 }
-
+uint64 
+min(uint64 a,uint64 b)
+{
+  if(a > b)return b;
+  else return a;
+}
 //flags will be either MAP_SHARED, meaning that modifications to the mapped 
 //memory should be written back to the file, or MAP_PRIVATE, meaning that they should not. 
 //You don't have to implement any other bits in flags. 
 uint64  
 sys_munmap(void)//offset is always 0
 { 
-   
   uint64 addr,length;
   if(argaddr(0, &addr) < 0 || argaddr(1, &length) < 0)
     return -1;
   struct file *f=0;
   int i = 0;
   for(i = 0;i < tot;i++){ 
-    if(addr >= vma[i].base && addr < vma[i].base + length){
+    if(addr + length > vma[i].base && addr < vma[i].va){
         f = vma[i].f;
         break;
     }
   }
-  if(i == tot)return -1;
-  //printf("from:%d %d %d %d tot %d\n",vma[i].va, vma[i].length, vma[i].offset, vma[i].base,tot);
+  if(i == tot)return 0;
+  uint delta = 0;
   for(uint va = addr;va < addr + length ;va += PGSIZE){
     if(va >= vma[i].base && va < vma[i].base + vma[i].length){
-      if(mmapwalk(myproc()->pagetable,va + i) == 0)break;//no content
+      if(mmapwalk(myproc()->pagetable,va + i) == 0)continue;//no content
       if(vma[i].flags & MAP_SHARED)filewrite(f, va, PGSIZE);
+      uint64 pa = walkaddr(myproc()->pagetable,va + i);
+      printf("unmap %p %p\n", va, pa);
       uvmunmap(myproc()->pagetable, va, 1, 1);
+      delta += PGSIZE;
     }
   }
-  if(addr > vma[i].base && addr < vma[i].base + vma[i].length){//next allocated address(cover the end)
-    vma[i].length -= vma[i].base + vma[i].length - addr;
+  if(addr > vma[i].base && addr < vma[i].va){//next allocated address(cover the end)
+    vma[i].length -= delta;
     vma[i].va = addr;
   }
   else if(addr + length > vma[i].base){//(cover the start)
-    vma[i].length -= addr + length - vma[i].base; 
-    vma[i].base = addr + length;
+    vma[i].length -= delta;
+    vma[i].base = min(addr + length, vma[i].va);
   }
-  //printf("to:%d %d %d %d\n",vma[i].va, vma[i].length, vma[i].offset, vma[i].base);
   if(vma[i].length == 0){
+    vma[i] = vma[tot-1];//swap
     tot--;
     acquire(&ftable.lock);
     f->ref--;
+    printf("%p %d\n",vma[i].L,f->ref);
     release(&ftable.lock);
   }
   //all cover
@@ -561,16 +569,21 @@ sys_mmap(void)
   }
   va = now;
   for(;;va += PGSIZE){ 
-    int ok=1;
-    for(uint64 i = 0;i < length;i += PGSIZE){
+    int ok = 1;
+    for(uint64 i = 0; i < length; i += PGSIZE){
       if(mmapwalk(myproc()->pagetable,va + i) != 0){
-        ok=0;
+        ok = 0;
         break;
+      }
+      for(int j = 0; j < tot; j++){
+        if(va + i >= vma[j].base && va + i < vma[j].base + length){
+          ok = 0;
+          break;
+        }
       }
     }
     if(ok==1)break;
   }
-  vma[tot].offset=0;
   vma[tot].f=f;
   vma[tot].va=va;
   vma[tot].length=length;
@@ -578,8 +591,10 @@ sys_mmap(void)
   vma[tot].flags=flags;
   vma[tot].base=va;
   vma[tot].L=va;
+  vma[tot].pid=myproc()->pid;
   filedup(f);
   tot++;
+  printf("map %d %p %p %p\n",tot,vma[tot-1].base,vma[tot-1].va,vma[tot-1].length);
   now = va + length;
   return va;
 }
