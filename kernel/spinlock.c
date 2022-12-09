@@ -141,6 +141,7 @@ push_off(void)
 
   intr_off();
   if(mycpu()->noff == 0)
+    //when popping off, the original intr status(on/off) is restored
     mycpu()->intena = old;
   mycpu()->noff += 1;
 }

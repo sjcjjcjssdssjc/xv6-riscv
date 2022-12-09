@@ -21,7 +21,7 @@ struct run {
 struct {
   struct spinlock lock;
   struct run *freelist;
-} kmem[8];
+} kmem[NCPU];
 
 void
 kinit()
