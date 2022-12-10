@@ -73,6 +73,7 @@ usertrap(void)
     uint64 va = r_stval();
     pte_t * pte = walk(p->pagetable,va,0);
     uint64 pa = PTE2PA(*pte); 
+    //printf("wcow va:%p pa:%p\n", va, pa);
     uint64 flags = PTE_FLAGS(*pte);
     if(!((*pte) & PTE_COW)){
       //printf("kill!\n");
@@ -87,7 +88,7 @@ usertrap(void)
         memmove((char *)ka, (char*)pa, PGSIZE);//pa is original
         uvmunmap(p->pagetable, va, 1, 1);
         if(mappages(p->pagetable, va, PGSIZE, ka, (PTE_W|flags)^PTE_COW) != 0){//unmask the cow
-          refcount[PA2IND(ka)]--;
+
           kfree((void *)ka);
           p->killed = 1;
         }

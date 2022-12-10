@@ -184,11 +184,6 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
     if(PTE_FLAGS(*pte) == PTE_V)
       panic("uvmunmap: not a leaf");
 
-    /*
-    if(!refcount[PA2IND(pa)] && !do_free){
-      printf("? %p\n",pa);
-    }
-    */
     if(do_free){
       refcount[PA2IND(pa)]--;
       pa = PTE2PA(*pte);
@@ -319,7 +314,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   //printf("%d\n", sz/PGSIZE);
   for(i = 0; i < sz; i += PGSIZE){
     //walk(pagetable_t pagetable, uint64 va, int alloc)
-    if((pte = walk(old, i, 1)) == 0)//father's pte changed to not Wable
+    if((pte = walk(old, i, 0)) == 0)
       panic("uvmcopy: pte should exist");
     if((*pte & PTE_V) == 0)
       panic("uvmcopy: page not present");
@@ -334,14 +329,14 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
       //kfree(mem);
       goto err;
     }
-    //printf("forking,pa is %p %p\n",pa,PA2IND(pa));
     refcount[PA2IND(pa)]++;
+    //printf("forking,pa is %p %p\n",pa,PA2IND(pa));
     
   }
   return 0;
 
  err:
-  printf("err\n");
+  printf("err??\n");
   uvmunmap(new, 0, i / PGSIZE, 1);
   return -1;
 }
@@ -366,27 +361,28 @@ int
 copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
 {
   //b vm.c:376
-  //printf("copyout %p\n",dstva);
+  //printf("copyout %p to %p\n", src, dstva);
   uint64 n, va0, pa0;
+  struct proc *p = myproc();
+  //uint64 base = dstva;
   int i=0;
   while(len > 0){//all ptes of cow page have cow bit set.
     
     va0 = PGROUNDDOWN(dstva);
     pa0 = walkaddr(pagetable, va0);
-    //printf("walked.\n");
-    //printf("pa0 is %p\n",pa0);
     if(pa0 == 0)
       return -1;
-    pte_t * pte = walk(pagetable,va0,0); 
+    pte_t * pte = walk(pagetable, va0, 0); 
     uint flags = PTE_FLAGS(*pte);
    
-    if(((*pte)&PTE_COW) && !((*pte)&PTE_W)){
+    if(((*pte) & PTE_COW) && !((*pte) & PTE_W)){
       n = PGSIZE - (dstva - va0);
       if(n > len)
         n = len;
       uint64 ka0 = (uint64) kalloc();//pa for va
       if(ka0 == 0){
-        goto err;
+        printf("copyout %p to %p\n", src, dstva);
+        p->killed = 1;
       } else{
         //va is dst
         memmove((char *)ka0, (char *)pa0, PGSIZE-n);//important va0->pa0
@@ -394,8 +390,12 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
         uvmunmap(pagetable, va0, 1, 1);
         if(mappages(pagetable, va0, PGSIZE, ka0, (PTE_W|flags)^PTE_COW) != 0){//unmap+ -1inref count?
           kfree((void *)ka0);
-          goto err;
+          refcount[PA2IND(ka0)]--;
+          uvmunmap(pagetable, PGROUNDDOWN(dstva), i / PGSIZE, 1);
+          return 0;
+          //does not happen
         }
+        //printf("yes1 %d\n", i / PGSIZE);
       }
       len -= n;
       src += n;
@@ -414,13 +414,31 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
     }
   }
   return 0;
-
-  err:
-    //printf("err\n");
-    uvmunmap(pagetable, PGROUNDDOWN(dstva), i / PGSIZE, 1);
-    return -1;
 }
+// // Copy from kernel to user.
+// // Copy len bytes from src to virtual address dstva in a given page table.
+// // Return 0 on success, -1 on error.
+// int
+// copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
+// {
+//   uint64 n, va0, pa0;
 
+//   while(len > 0){
+//     va0 = PGROUNDDOWN(dstva);
+//     pa0 = walkaddr(pagetable, va0);
+//     if(pa0 == 0)
+//       return -1;
+//     n = PGSIZE - (dstva - va0);
+//     if(n > len)
+//       n = len;
+//     memmove((void *)(pa0 + (dstva - va0)), src, n);
+
+//     len -= n;
+//     src += n;
+//     dstva = va0 + PGSIZE;
+//   }
+//   return 0;
+// }
 // Copy from user to kernel.
 // Copy len bytes to dst from virtual address srcva in a given page table.
 // Return 0 on success, -1 on error.
