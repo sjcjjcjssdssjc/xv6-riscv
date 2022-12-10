@@ -42,9 +42,9 @@ binit(void)
     initlock(&bcache[i].lock, s);
     
     for(b = bcache[i].buf; b < bcache[i].buf+NBUF; b++){
+      initsleeplock(&b->lock, "buffer");
       b->timestamp = 0;
       b->owner = bcache + i;
-      initsleeplock(&b->lock, "buffer");
     }
   }
 }
