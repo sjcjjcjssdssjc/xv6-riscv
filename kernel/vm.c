@@ -87,7 +87,7 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
     panic("walk");
 
   for(int level = 2; level > 0; level--) {
-    pte_t *pte = &pagetable[PX(level, va)];//30..38/21..29/12..20 to 0:8
+    pte_t *pte = &pagetable[PX(level, va)];
     if(*pte & PTE_V) {
       pagetable = (pagetable_t)PTE2PA(*pte);
     }else {
@@ -368,7 +368,7 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
   //b vm.c:376
   //printf("copyout %p\n",dstva);
   uint64 n, va0, pa0;
-  int i=0;//5
+  int i=0;
   while(len > 0){//all ptes of cow page have cow bit set.
     
     va0 = PGROUNDDOWN(dstva);
@@ -392,7 +392,7 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
         memmove((char *)ka0, (char *)pa0, PGSIZE-n);//important va0->pa0
         memmove((char *)(ka0 + (dstva - va0)), src, n);//src is kernel address(physical)
         uvmunmap(pagetable, va0, 1, 1);
-        if(mappages(pagetable, va0, PGSIZE, ka0, PTE_W|flags) != 0){//unmap+ -1inref count?
+        if(mappages(pagetable, va0, PGSIZE, ka0, (PTE_W|flags)^PTE_COW) != 0){//unmap+ -1inref count?
           kfree((void *)ka0);
           goto err;
         }
