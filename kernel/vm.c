@@ -219,6 +219,7 @@ uvminit(pagetable_t pagetable, uchar *src, uint sz)
   mem = kalloc();
   memset(mem, 0, PGSIZE);
   mappages(pagetable, 0, PGSIZE, (uint64)mem, PTE_W|PTE_R|PTE_X|PTE_U);
+  refcount[PA2IND(mem)] = 1;
   memmove(mem, src, sz);
 }
 
@@ -246,6 +247,7 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
       uvmdealloc(pagetable, a, oldsz);
       return 0;
     }
+    refcount[PA2IND(mem)]++;
   }
   return newsz;
 }
@@ -323,8 +325,6 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
     (*pte) &= (~PTE_W);
     *pte |= PTE_COW;
     flags = PTE_FLAGS(*pte);//lower 10bits
-    //pte = walk(old, i, 0);
-    //printf("uvmcopy %p %p\n",*pte,flags);
     if(mappages(new, i, PGSIZE, (uint64)pa, flags) != 0){
       //kfree(mem);
       goto err;
@@ -336,7 +336,7 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   return 0;
 
  err:
-  printf("err??\n");
+  printf("err %d\n", i);
   uvmunmap(new, 0, i / PGSIZE, 1);
   return -1;
 }
@@ -385,12 +385,13 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
         p->killed = 1;
       } else{
         //va is dst
-        memmove((char *)ka0, (char *)pa0, PGSIZE-n);//important va0->pa0
-        memmove((char *)(ka0 + (dstva - va0)), src, n);//src is kernel address(physical)
+        refcount[PA2IND(ka0)]++;
+        memmove((char *)ka0, (char *)pa0, PGSIZE-n);
+        memmove((char *)(ka0 + (dstva - va0)), src, n);
         uvmunmap(pagetable, va0, 1, 1);
-        if(mappages(pagetable, va0, PGSIZE, ka0, (PTE_W|flags)^PTE_COW) != 0){//unmap+ -1inref count?
-          kfree((void *)ka0);
+        if(mappages(pagetable, va0, PGSIZE, ka0, (PTE_W|flags)^PTE_COW) != 0){
           refcount[PA2IND(ka0)]--;
+          kfree((void *)ka0);
           uvmunmap(pagetable, PGROUNDDOWN(dstva), i / PGSIZE, 1);
           return 0;
           //does not happen

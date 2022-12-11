@@ -69,7 +69,8 @@ usertrap(void)
   } else if((which_dev = devintr()) != 0){
     //ok. *To tell the hardware to use a page table, the kernel must write the physical address of the root page-table page into the satp register.
     //user(page table + kernel page table) 2, kernel 1
-  } else if((r_scause() == 13 || r_scause() == 15) && r_stval() < MAXVA){ //page faults (13 is lod page fault)
+  } else if((r_scause() == 13 || r_scause() == 15) && ((r_stval() < MAXVA
+  && r_stval() > PHYSTOP) || r_stval() < KERNBASE)){ //page faults (13 is lod page fault)
     uint64 va = r_stval();
     pte_t * pte = walk(p->pagetable,va,0);
     uint64 pa = PTE2PA(*pte); 
@@ -85,10 +86,11 @@ usertrap(void)
         p->killed = 1;
       } else { // NOT THIS FUNCTION!!!
         va = PGROUNDDOWN(va);
+        refcount[PA2IND(ka)]++;
         memmove((char *)ka, (char*)pa, PGSIZE);//pa is original
         uvmunmap(p->pagetable, va, 1, 1);
         if(mappages(p->pagetable, va, PGSIZE, ka, (PTE_W|flags)^PTE_COW) != 0){//unmask the cow
-
+          refcount[PA2IND(ka)]--;
           kfree((void *)ka);
           p->killed = 1;
         }
