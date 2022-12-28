@@ -22,7 +22,7 @@
 #include "defs.h"
 #include "fs.h"
 #include "buf.h"
-extern uint ticks;
+uint bc_ticks;
 struct buffer_cache{
   struct spinlock lock;
   struct buf buf[NBUF];
@@ -60,7 +60,15 @@ bget(uint dev, uint blockno)
   acquire(&bcache[ind].lock);
 
   // Is the block already cached?
-  for(b = bcache[ind].buf+NBUF-1; b >= bcache[ind].buf; b--){
+  for(b = bcache[ind].buf + (bc_ticks % NBUF); b >= bcache[ind].buf; b--){
+    if(b->dev == dev && b->blockno == blockno){
+      b->refcnt++;
+      release(&bcache[ind].lock);//calls brelase?
+      acquiresleep(&b->lock);
+      return b;
+    }
+  }
+  for(b = bcache[ind].buf + NBUF - 1; b > bcache[ind].buf + (bc_ticks % NBUF); b--){
     if(b->dev == dev && b->blockno == blockno){
       b->refcnt++;
       release(&bcache[ind].lock);//calls brelase?
@@ -71,7 +79,7 @@ bget(uint dev, uint blockno)
 
   // Not cached.
   // Recycle the least recently used (LRU) unused buffer.
-  for(b = bcache[ind].buf + (ticks % NBUF); b < bcache[ind].buf+NBUF; b++){
+  for(b = bcache[ind].buf + (bc_ticks % NBUF); b < bcache[ind].buf+NBUF; b++){
     if(b->refcnt == 0) {
       b->dev = dev;
       b->blockno = blockno;
@@ -82,6 +90,18 @@ bget(uint dev, uint blockno)
       return b;
     }
   }
+  for(b = bcache[ind].buf; b < bcache[ind].buf + (bc_ticks % NBUF); b++){
+    if(b->refcnt == 0) {
+      b->dev = dev;
+      b->blockno = blockno;
+      b->valid = 0;
+      b->refcnt = 1;
+      release(&bcache[ind].lock);
+      acquiresleep(&b->lock);
+      return b;
+    }
+  }
+  bc_ticks++;
   panic("bget: no buffers");
 }
 
