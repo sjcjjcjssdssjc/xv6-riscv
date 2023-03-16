@@ -105,14 +105,11 @@ usertrap(void)
         int W=0,R=0;
         if(vma[i].prot & PROT_READ)R |= PTE_R;
         if(vma[i].prot & PROT_WRITE)W |= PTE_W;
-        for(;;va += PGSIZE){
-          //printf("search %p res %d\n",0x201000,mmapwalk(myproc()->pagetable,0x201000));
-          if(mmapwalk(myproc()->pagetable,va) != 0)continue;
-          if(mappages(p->pagetable, va, PGSIZE, ka,PTE_U|W|R) == 0){
-            break;
-          }
+
+        if(mappages(p->pagetable, va, PGSIZE, ka,PTE_U|W|R) != 0){
+            p->killed = 1;
         }
-        //printf("alloc on %p\n",va);
+        
         memset((void *)ka,0,PGSIZE);//pgsize is 4096
         int r = 0;
         ilock(f->ip);
