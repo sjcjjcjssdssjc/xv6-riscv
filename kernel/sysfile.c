@@ -508,13 +508,12 @@ sys_munmap(void)//offset is always 0
   struct file *f=0;
   int i = 0;
   for(i = 0;i < tot;i++){ 
-    if(addr + length > vma[i].base && addr < vma[i].va){
+    if(addr + length > vma[i].base && addr < vma[i].base + vma[i].length){
         f = vma[i].f;
         break;
     }
   }
   if(i == tot)return 0;
-  uint delta = 0;
   for(uint va = addr;va < addr + length ;va += PGSIZE){
     if(va >= vma[i].base && va < vma[i].base + vma[i].length){
       if(mmapwalk(myproc()->pagetable,va + i) == 0)continue;//no content
@@ -522,23 +521,21 @@ sys_munmap(void)//offset is always 0
       uint64 pa = walkaddr(myproc()->pagetable,va + i);
       printf("unmap %p %p\n", va, pa);
       uvmunmap(myproc()->pagetable, va, 1, 1);
-      delta += PGSIZE;
     }
   }
-  if(addr > vma[i].base && addr < vma[i].va){//next allocated address(cover the end)
-    vma[i].length -= delta;
-    vma[i].va = addr;
+
+  if(addr + length > vma[i].base && addr <= vma[i].base){//(cover the start)
+    vma[i].length -= addr + length - vma[i].base;
+    vma[i].base = addr + length;
+  } else if(addr < vma[i].base + vma[i].length){
+    vma[i].length = addr - vma[i].base;
   }
-  else if(addr + length > vma[i].base){//(cover the start)
-    vma[i].length -= delta;
-    vma[i].base = min(addr + length, vma[i].va);
-  }
+
   if(vma[i].length == 0){
     vma[i] = vma[tot-1];//swap
     tot--;
     acquire(&ftable.lock);
     f->ref--;
-    printf("%p %d\n",vma[i].L,f->ref);
     release(&ftable.lock);
   }
   //all cover
@@ -585,16 +582,14 @@ sys_mmap(void)
     if(ok==1)break;
   }
   vma[tot].f=f;
-  vma[tot].va=va;
   vma[tot].length=length;
   vma[tot].prot=prot;
   vma[tot].flags=flags;
   vma[tot].base=va;
-  vma[tot].L=va;
   vma[tot].pid=myproc()->pid;
   filedup(f);
   tot++;
-  printf("map %d %p %p %p\n",tot,vma[tot-1].base,vma[tot-1].va,vma[tot-1].length);
+  //printf("map %d %p %p %p\n",tot,vma[tot-1].base,vma[tot-1].va,vma[tot-1].length);
   now = va + length;
   return va;
 }

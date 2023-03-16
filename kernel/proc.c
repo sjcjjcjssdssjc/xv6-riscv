@@ -335,7 +335,7 @@ fork(void)
   for(int i = 0; i < tot/2; i++){
     f = vma[i].f;
     uint64 va;
-    for(va = vma[i].L; va < vma[i].L + vma[i].length; va += PGSIZE){
+    for(va = vma[i].base; va < vma[i].base + vma[i].length; va += PGSIZE){
       uint64 pa;
       pte_t *pte;
       pa = walkaddr(p->pagetable, va);
