@@ -508,7 +508,8 @@ sys_munmap(void)//offset is always 0
   struct file *f=0;
   int i = 0;
   for(i = 0;i < tot;i++){ 
-    if(addr + length > vma[i].base && addr < vma[i].base + vma[i].length){
+    if(addr + length > vma[i].base && addr < vma[i].base + vma[i].length
+    && vma[i].pid == myproc()->pid){
         f = vma[i].f;
         break;
     }
@@ -519,7 +520,7 @@ sys_munmap(void)//offset is always 0
       if(mmapwalk(myproc()->pagetable,va + i) == 0)continue;//no content
       if(vma[i].flags & MAP_SHARED)filewrite(f, va, PGSIZE);
       uint64 pa = walkaddr(myproc()->pagetable,va + i);
-      printf("unmap %p %p\n", va, pa);
+      printf("unmap pid: %d i:%d %p %p\n", myproc()->pid, i, va, pa);
       uvmunmap(myproc()->pagetable, va, 1, 1);
     }
   }
@@ -532,6 +533,7 @@ sys_munmap(void)//offset is always 0
   }
 
   if(vma[i].length == 0){
+    printf("defile %d\n",i);
     vma[i] = vma[tot-1];//swap
     tot--;
     acquire(&ftable.lock);

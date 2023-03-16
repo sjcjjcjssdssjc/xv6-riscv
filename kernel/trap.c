@@ -83,8 +83,11 @@ usertrap(void)
       struct file *f=0;
       int i = 0;
       printf("totis %d\n",tot);
+      for(int x = 0;x < tot; x++){
+        printf("pids: %d %d %p [%p,%p)\n",vma[x].pid, myproc()->pid,
+        va, vma[x].base, vma[x].base + vma[x].length);
+      }
       for(i = 0;i < tot; i++){ 
-        printf("pids: %d %d\n",vma[i].pid, myproc()->pid);
         if(va >= vma[i].base && va < vma[i].base + vma[i].length && vma[i].pid == myproc()->pid){
             f = vma[i].f;
             break;
